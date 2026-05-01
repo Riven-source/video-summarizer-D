@@ -1,0 +1,39 @@
+# Build outputs
+dist/
+dist-electron/
+release/
+
+# Dependencies
+node_modules/
+
+# Electron cache
+.electron-cache/
+
+# Python virtual environment
+.venv/
+
+# Logs
+logs/
+*.log
+
+# macOS system files
+.DS_Store
+
+# Test files (root level)
+test-*.cjs
+run-electron.cjs
+electron-run.cjs
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
