@@ -10,12 +10,12 @@ interface Task {
   id: string
   url: string
   mode: string
-  status: 'pending' | 'downloading' | 'transcribing' | 'summarizing' | 'completed' | 'error'
+  status: 'pending' | 'downloading' | 'transcribing' | 'completed' | 'error'
   progress: number
   error?: string
   title?: string
   summary?: string
-  summaryPath?: string
+  transcriptionPath?: string
   createdAt: number
   completedAt?: number
 }
@@ -30,16 +30,14 @@ export interface ElectronAPI {
   deleteTask: (taskId: string) => Promise<{ success: boolean; error?: string }>
   clearAllTasks: () => Promise<{ success: boolean; error?: string }>
   onTaskUpdate: (callback: (task: Task) => void) => () => void
-  downloadSummary: (taskId: string) => Promise<{ success: boolean; path?: string; error?: string }>
   downloadTranscription: (taskId: string) => Promise<{ success: boolean; path?: string; error?: string }>
   openPath: (path: string) => Promise<boolean>
-  openSummariesFolder: () => Promise<{ success: boolean; error?: string }>
   openTranscriptionsFolder: () => Promise<{ success: boolean; error?: string }>
   
   // Cookie 管理
   getCookiesFromChrome: (site: 'bilibili' | 'youtube') => Promise<{ success: boolean; error?: string }>
   importCookieFromPath: (site: 'bilibili' | 'youtube', filePath: string) => Promise<{ success: boolean; path?: string; size?: number; error?: string }>
-  
+
   // 检查是否为 Electron 环境
   isElectron: boolean
 }
@@ -59,8 +57,6 @@ const electronAPI: ElectronAPI = {
     return () => ipcRenderer.removeListener('task-update', handler)
   },
   
-  downloadSummary: (taskId) => ipcRenderer.invoke('download-summary', taskId),
-
   downloadTranscription: (taskId) => ipcRenderer.invoke('download-transcription', taskId),
 
   deleteTask: (taskId) => ipcRenderer.invoke('delete-task', taskId),
@@ -68,8 +64,6 @@ const electronAPI: ElectronAPI = {
   clearAllTasks: () => ipcRenderer.invoke('clear-all-tasks'),
   
   openPath: (path) => ipcRenderer.invoke('open-path', path),
-  
-  openSummariesFolder: () => ipcRenderer.invoke('open-summaries-folder'),
   
   openTranscriptionsFolder: () => ipcRenderer.invoke('open-transcriptions-folder'),
   

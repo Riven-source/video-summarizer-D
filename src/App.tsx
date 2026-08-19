@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, Download, FileText, CheckCircle, XCircle, Copy, Check, FolderOpen, Trash2, RefreshCw, Search } from 'lucide-react';
+import { Plus, FileText, CheckCircle, XCircle, Copy, FolderOpen, Trash2, RefreshCw, Search, Download } from 'lucide-react';
 import { Task, TaskStatus } from './config';
 import { isElectron } from './utils/electron';
 
@@ -10,7 +10,6 @@ const StatusIcon: React.FC<{ status: TaskStatus }> = ({ status }) => {
     pending: <div className="w-2.5 h-2.5 rounded-full bg-gray-300" />,
     downloading: <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />,
     transcribing: <div className="w-2.5 h-2.5 rounded-full bg-yellow-500 animate-pulse" />,
-    summarizing: <div className="w-2.5 h-2.5 rounded-full bg-purple-500 animate-pulse" />,
     completed: <CheckCircle className="w-4 h-4 text-green-500" />,
     error: <XCircle className="w-4 h-4 text-red-500" />,
   };
@@ -22,7 +21,6 @@ const statusText: Record<TaskStatus, string> = {
   pending: '等待中',
   downloading: '下载中',
   transcribing: '转写中',
-  summarizing: '总结中',
   completed: '已完成',
   error: '失败',
 };
@@ -66,6 +64,7 @@ function App() {
   // [TODO] 提交任务
   const handleSubmit = async () => {
     if (!url.trim()) return;
+    
     setSubmitting(true);
 
     try {
@@ -84,26 +83,15 @@ function App() {
     }
   };
 
-  // [TODO] 下载 MD 文件
-  const handleDownload = async (taskId: string) => {
-    if (isElectron() && window.electronAPI) {
-      const result = await window.electronAPI.downloadSummary(taskId);
-      if (result.success && result.path) {
-        await window.electronAPI.openPath(result.path);
-      } else {
-        console.error('下载失败:', result.error);
-      }
-    }
-  };
-
-  // [TODO] 下载转写文案
-  const handleDownloadTranscription = async (taskId: string) => {
+  // [TODO] 打开转写文案
+  const handleDownloadTranscription = async (taskId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     if (isElectron() && window.electronAPI) {
       const result = await window.electronAPI.downloadTranscription(taskId);
       if (result.success && result.path) {
         await window.electronAPI.openPath(result.path);
       } else {
-        console.error('下载文案失败:', result.error);
+        console.error('打开文案失败:', result.error);
       }
     }
   };
@@ -111,13 +99,6 @@ function App() {
   // [TODO] 复制链接
   const handleCopyUrl = async (url: string) => {
     await navigator.clipboard.writeText(url);
-  };
-
-  // [TODO] 打开总结文件夹
-  const handleOpenSummariesFolder = async () => {
-    if (isElectron() && window.electronAPI) {
-      await window.electronAPI.openSummariesFolder();
-    }
   };
 
   // [TODO] 打开转写文案文件夹
@@ -155,7 +136,7 @@ function App() {
     }
   };
 
-  // 刷新任务（重新总结）
+  // 刷新任务（重新处理）
   const handleRefreshTask = async (taskId: string) => {
     setRefreshingTaskId(taskId);
     try {
@@ -214,13 +195,6 @@ function App() {
         <div className="max-w-4xl mx-auto px-6 h-14 flex items-center justify-between">
           <h1 className="text-lg font-semibold tracking-tight">Video Summarizer <span className="text-xs text-gray-500 ml-2">v1.0.5</span></h1>
           <div className="flex items-center gap-2">
-            <button
-              onClick={handleOpenSummariesFolder}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg text-sm transition-colors"
-              title="打开总结文件夹"
-            >
-              <FolderOpen className="w-4 h-4" />
-            </button>
             <button
               onClick={handleOpenTranscriptionsFolder}
               className="flex items-center gap-1.5 px-3 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg text-sm transition-colors"
@@ -401,10 +375,21 @@ function App() {
                   </div>
                 )}
 
+                {task.status === 'completed' && task.transcriptionPath && (
+                  <button
+                    onClick={(e) => handleDownloadTranscription(task.id, e)}
+                    className="flex items-center gap-1 px-2.5 py-1.5 text-gray-600 hover:text-green-400 hover:bg-gray-800 rounded-lg text-xs transition-colors flex-shrink-0"
+                    title="打开转写文案"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    文案
+                  </button>
+                )}
+
                 <button
                   onClick={() => handleRefreshTask(task.id)}
                   className="p-1.5 text-gray-600 hover:text-blue-400 hover:bg-gray-800 rounded-lg transition-colors flex-shrink-0"
-                  title="刷新任务（重新总结）"
+                  title="刷新任务（重新处理）"
                 >
                   <RefreshCw className="w-4 h-4" />
                 </button>

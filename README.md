@@ -1,14 +1,14 @@
 # Video Summarizer
 
-AI-powered video analysis tool that automatically downloads, transcribes, and summarizes video content from Bilibili and YouTube.
+Video analysis tool that automatically downloads videos and transcribes audio to text from Bilibili and YouTube.
 
 ## Features
 
 - **Video Download**: Automatically download videos from Bilibili and YouTube
 - **Audio Transcription**: Convert video audio to text using FunASR (Paraformer model)
-- **AI Summarization**: Generate structured summaries using Qwen AI model
+- **Transcription Output**: Save full transcription text files (`.txt`) for each task
 - **Long Video Support**: Automatic segmentation for videos over 30 minutes
-- **Task Management**: Track and manage multiple summarization tasks
+- **Task Management**: Track and manage multiple transcription tasks
 - **Search & Filter**: Search tasks by title, URL, or error messages
 
 ## Tech Stack
@@ -21,7 +21,6 @@ AI-powered video analysis tool that automatically downloads, transcribes, and su
 | Video Download | yt-dlp |
 | Audio Processing | FFmpeg |
 | Transcription | FunASR (Paraformer + VAD + Punctuation) |
-| AI Summary | Qwen (via DashScope API) |
 
 ## Architecture
 
@@ -40,9 +39,8 @@ flowchart TD
     H --> K[FunASR转写]
     J --> L[合并转写结果]
     K --> L
-    L --> M[Qwen AI总结]
-    M --> N[保存Markdown]
-    N --> O[任务完成]
+    L --> M[保存转写文案]
+    M --> N[任务完成]
 ```
 
 ## Quick Start
@@ -75,8 +73,9 @@ npm run build:electron
 1. Open the application
 2. Paste a Bilibili or YouTube video URL
 3. Click "开始分析"
-4. Wait for download, transcription, and summarization
-5. View and download the generated summary
+4. Wait for download and transcription
+5. The task completes when transcription is merged
+6. Click the "文案" button on a completed task to open the transcription file in Finder
 
 ### Cookie Setup (Bilibili Only)
 
@@ -93,6 +92,8 @@ video-summarizer-D/
 │   ├── App.tsx          # Main React component
 │   ├── config.ts        # Configuration
 │   ├── main.tsx         # React entry
+│   ├── types/
+│   │   └── electron.d.ts # Electron API types
 │   └── index.css        # Styles
 ├── dist/                # Built frontend
 ├── dist-electron/       # Built Electron code
@@ -113,8 +114,8 @@ A: Make sure you're logged into Bilibili in Chrome browser. The app reads cookie
 **Q: Long videos take too long?**
 A: Videos over 30 minutes are automatically segmented. Total time depends on video length and server load.
 
-**Q: Where are summaries saved?**
-A: Summaries are saved in the application data directory under `summaries/`.
+**Q: Where are transcriptions saved?**
+A: Transcription text files are saved in the application data directory under `transcriptions/`.
 
 ## Contributing
 

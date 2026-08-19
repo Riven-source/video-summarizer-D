@@ -576,37 +576,13 @@ ipcMain.handle('refresh-task', async (_, taskId: string) => {
   if (!task) {
     return { success: false, error: '任务不存在' }
   }
-  // 如果任务已完成且有转写文案，直接进入AI总结阶段
-  if (task.status === 'completed' && task.transcriptionPath) {
-    task.status = 'summarizing'
-    task.progress = 85
-    task.error = undefined
-    updateTask(task)
-    // 直接调用AI总结阶段（重用processTask的一部分）
-    // 这里我们暂时调用processTask，但processTask会从头开始。
-    // 我们需要一个专门的函数来处理刷新逻辑。
-    // 暂时先调用processTask，但后续优化。
-    processTask(task).catch(console.error)
-    return { success: true, taskId: task.id }
-  } else {
-    // 对于其他状态的任务，退回到重试逻辑
-    task.status = 'pending'
-    task.progress = 0
-    task.error = undefined
-    updateTask(task)
-    processTask(task).catch(console.error)
-    return { success: true, taskId: task.id }
-  }
-})
-
-ipcMain.handle('download-summary', async (_, taskId: string) => {
-  const tasks = loadTasks()
-  const task = tasks.find((t: any) => t.id === taskId)
-  if (!task || !task.summaryPath) {
-    return { success: false, error: 'Summary not found' }
-  }
-  shell.showItemInFolder(task.summaryPath)
-  return { success: true, path: task.summaryPath }
+  // 刷新任务：重新执行完整流程（下载 + 转写）
+  task.status = 'pending'
+  task.progress = 0
+  task.error = undefined
+  updateTask(task)
+  processTask(task).catch(console.error)
+  return { success: true, taskId: task.id }
 })
 
 ipcMain.handle('download-transcription', async (_, taskId: string) => {
@@ -622,16 +598,6 @@ ipcMain.handle('download-transcription', async (_, taskId: string) => {
 ipcMain.handle('open-path', async (_, path: string) => {
   shell.openPath(path)
   return true
-})
-
-// [DEBUG] 打开总结文件夹 IPC
-ipcMain.handle('open-summaries-folder', async () => {
-  const summaryDir = join(app.getPath('userData'), 'summaries')
-  if (!fs.existsSync(summaryDir)) {
-    fs.mkdirSync(summaryDir, { recursive: true })
-  }
-  shell.openPath(summaryDir)
-  return { success: true, path: summaryDir }
 })
 
 // [DEBUG] 打开转写文案文件夹 IPC
@@ -669,16 +635,6 @@ ipcMain.handle('delete-task', async (_, taskId: string) => {
         log('DEBUG', 'IPC', '删除临时文件', { tempDir })
       } catch (e) {
         log('WARN', 'IPC', '删除临时文件失败', { error: String(e) })
-      }
-    }
-    
-    // 删除总结文件（如果存在）
-    if (task.summaryPath && fs.existsSync(task.summaryPath)) {
-      try {
-        fs.unlinkSync(task.summaryPath)
-        log('DEBUG', 'IPC', '删除总结文件', { path: task.summaryPath })
-      } catch (e) {
-        log('WARN', 'IPC', '删除总结文件失败', { error: String(e) })
       }
     }
     
@@ -740,119 +696,6 @@ async function processTask(task: any) {
   let audioPath = ''
   
   log('LOG', 'Task', '开始处理任务', { id: taskId, url, mode })
-  
-  // 如果任务已有转写文案，直接进入AI总结阶段
-  if (task.transcriptionPath && fs.existsSync(task.transcriptionPath)) {
-    log('LOG', 'Task', '使用现有转写文案', { transcriptionPath: task.transcriptionPath })
-    try {
-      const transcriptionText = fs.readFileSync(task.transcriptionPath, 'utf-8')
-      // 直接跳转到AI总结阶段
-      task.status = 'summarizing'
-      task.progress = 85
-      updateTask(task)
-      await performAISummary(task, transcriptionText)
-      return
-    } catch (error) {
-      log('ERROR', 'Task', '读取现有转写文案失败，回退到正常流程', { error: String(error) })
-      // 继续正常流程
-    }
-  }
-  
-  // AI总结函数
-  async function performAISummary(task: any, transcriptionText: string) {
-    task.status = 'summarizing'
-    task.progress = 85
-    updateTask(task)
-    log('LOG', 'Task', '阶段3: AI 总结 (Qwen)', { textLength: transcriptionText.length })
-
-    const apiEndpoint = Config.api.dashscope.endpoint
-    const apiKey = Config.api.dashscope.apiKey
-    const modelName = Config.api.dashscope.model
-    const maxTokens = Config.api.dashscope.maxTokens
-    const temperature = Config.api.dashscope.temperature
-
-    // 超长字幕截断
-    const MAX_PROMPT_CHARS = 60000
-    const truncatedText = transcriptionText.length > MAX_PROMPT_CHARS
-      ? transcriptionText.substring(0, MAX_PROMPT_CHARS) + '\n\n[内容过长，已截断...]'
-      : transcriptionText
-
-    const summaryPrompt = Config.summaryPrompt + '\n\n# ' + (task.title || '视频总结') + '\n\n## 视频字幕内容：\n' + truncatedText
-
-    const apiResponse = await fetch(apiEndpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: modelName,
-        messages: [{ role: 'user', content: summaryPrompt }],
-        max_tokens: maxTokens,
-        temperature: temperature
-      })
-    })
-
-    if (!apiResponse.ok) {
-      const errorText = await apiResponse.text()
-      log('ERROR', 'Task', 'Qwen API 调用失败', { status: apiResponse.status, error: errorText })
-      throw new Error(`AI 总结失败: ${apiResponse.status} - ${errorText}`)
-    }
-
-    const apiData: any = await apiResponse.json()
-    // OpenAI兼容格式响应
-    const summaryContent = apiData.choices?.[0]?.message?.content || transcriptionText
-    
-    log('LOG', 'Task', 'AI 总结完成', { summaryLength: summaryContent.length })
-    
-    // ==================== 阶段4: 保存文件 ====================
-    task.progress = 95
-    updateTask(task)
-    
-    // 清理 summaryContent 中的代码块标记
-    let cleanContent = summaryContent
-    // 移除 ```markdown 或 ``` 开头的行
-    cleanContent = cleanContent.replace(/^```markdown\s*$/gm, '')
-    cleanContent = cleanContent.replace(/^```\s*$/gm, '')
-    cleanContent = cleanContent.replace(/^```md\s*$/gm, '')
-    cleanContent = cleanContent.trim()
-    
-    const summaryDir = join(app.getPath('userData'), 'summaries')
-    if (!fs.existsSync(summaryDir)) {
-      fs.mkdirSync(summaryDir, { recursive: true })
-    }
-    
-    // 使用视频标题 + 任务 ID 作为文件名（清理特殊字符，确保唯一性）
-    const safeTitle = (task.title || '视频总结').replace(/[\/\\:*?"<>|]/g, ' ').trim().substring(0, 60)
-    const summaryFileName = `${task.id}_${safeTitle || '视频总结'}.md`
-    const summaryPath = join(summaryDir, summaryFileName)
-    
-    let fullSummary;
-    if (cleanContent.startsWith('# ')) {
-      const lines = cleanContent.split('\n');
-      const titleLine = lines[0];
-      const rest = lines.slice(1).join('\n');
-      fullSummary = `${titleLine}\n\n> 生成时间: ${new Date().toLocaleString('zh-CN')}\n\n${rest}`;
-    } else {
-      fullSummary = `# ${task.title || '视频总结'}\n\n> 生成时间: ${new Date().toLocaleString('zh-CN')}\n\n---\n\n${cleanContent}`;
-    }
-    
-    fs.writeFileSync(summaryPath, fullSummary, 'utf-8')
-    log('LOG', 'Task', '总结文件已保存', { path: summaryPath, videoTitle: task.title })
-    
-    // ==================== 阶段5: 清理临时文件 ====================
-    // 刷新任务无需清理临时文件
-    
-    // ==================== 完成 ====================
-    task.status = 'completed'
-    task.progress = 100
-    task.summary = fullSummary
-    task.summaryPath = summaryPath
-    task.completedAt = Date.now()
-    updateTask(task)
-    
-    log('LOG', 'Task', '任务完成', { id: task.id, summaryPath })
-  }
   
   try {
     // 确保临时目录存在
@@ -1410,10 +1253,15 @@ except Exception as e:
     const transcriptionPath = join(transcriptionDir, transcriptionFileName)
     fs.writeFileSync(transcriptionPath, transcriptionText, 'utf-8')
     task.transcriptionPath = transcriptionPath
+    task.progress = 100
     log('LOG', 'Task', '转写文案已保存', { path: transcriptionPath })
 
-    // ==================== 阶段3: AI 总结 (Qwen) ====================
-    // performAISummary 函数内部已完成：阶段4保存文件 + 阶段5清理 + 完成状态更新
+    // ==================== 阶段3: 任务完成（合并转写结果） ====================
+    task.status = 'completed'
+    task.summary = transcriptionText
+    task.completedAt = Date.now()
+    updateTask(task)
+    log('LOG', 'Task', '任务完成', { id: taskId, transcriptionPath })
     
   } catch (error) {
     log('ERROR', 'Task', '任务失败', { id: taskId, error: String(error) })
